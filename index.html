@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>NEON HORIZON 3D</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    body {
+      overflow: hidden;
+      background: #05020d;
+      font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      color: #fff;
+    }
+    canvas {
+      display: block;
+    }
+    #hud {
+      position: fixed;
+      top: 20px;
+      left: 25px;
+      right: 25px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      pointer-events: none;
+      z-index: 10;
+    }
+    .stat-box {
+      background: rgba(10, 15, 35, 0.55);
+      border: 1px solid rgba(0, 243, 255, 0.4);
+      backdrop-filter: blur(8px);
+      padding: 10px 20px;
+      border-radius: 12px;
+      box-shadow: 0 0 20px rgba(0, 243, 255, 0.2);
+    }
+    .stat-label {
+      font-size: 11px;
+      letter-spacing: 2px;
+      color: #00f3ff;
+      text-transform: uppercase;
+    }
+    .stat-value {
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      text-shadow: 0 0 10px #00f3ff;
+    }
+    #overlay {
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(circle at center, rgba(12, 8, 36, 0.75), rgba(3, 1, 10, 0.94));
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 20px;
+      z-index: 20;
+      transition: opacity 0.3s ease;
+    }
+    #overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+    h1 {
+      font-size: clamp(2.4rem, 6vw, 4.5rem);
+      font-weight: 900;
+      letter-spacing: 6px;
+      background: linear-gradient(90deg, #00f3ff, #ff007f, #ffae00);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      filter: drop-shadow(0 0 25px rgba(0, 243, 255, 0.5));
+      margin-bottom: 10px;
+    }
+    p.subtitle {
+      color: #b8c7e0;
+      font-size: 16px;
+      max-width: 480px;
+      line-height: 1.5;
+      margin-bottom: 30px;
+    }
+    #final-score {
+      font-size: 22px;
+      color: #ffae00;
+      margin-bottom: 20px;
+      font-weight: bold;
+      display: none;
+    }
+    button#start-btn {
+      padding: 16px 46px;
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: 3px;
+      color: #05020d;
+      background: linear-gradient(90deg, #00f3ff, #00ff9d);
+      border: none;
+      border-radius: 50px;
+      cursor: pointer;
+      box-shadow: 0 0 30px rgba(0, 243, 255, 0.7);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    button#start-btn:hover {
+      transform: scale(1.06);
+      box-shadow: 0 0 45px rgba(0, 255, 157, 0.95);
+    }
+    .controls-hint {
+      margin-top: 25px;
+      font-size: 13px;
+      color: #7c8db5;
+      letter-spacing: 1px;
+    }
+  </style>
+
+  <!-- Three.js & Post-Processing Import Map -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+
+  <div id="hud">
+    <div class="stat-box">
+      <div class="stat-label">Score</div>
+      <div class="stat-value" id="score">0</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">High Score</div>
+      <div class="stat-value" id="highscore">0</div>
+    </div>
+  </div>
+
+  <div id="overlay">
+    <h1 id="title">NEON HORIZON</h1>
+    <p class="subtitle" id="desc">High-speed cyber craft ko control karein, glowing energy orbs collect karein aur laser barriers se bachein!</p>
+    <div id="final-score"></div>
+    <button id="start-btn">LAUNCH GAME</button>
+    <div class="controls-hint">PC: Left / Right Arrow ya A / D &nbsp;|&nbsp; Mobile: Left / Right Side Tap</div>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+    // --- SCENE, CAMERA & RENDERER ---
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x070314, 0.016);
+
+    const camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.1, 200);
+    camera.position.set(0, 4.2, 10);
+    camera.lookAt(0, 1.5, -10);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.2;
+    document.body.appendChild(renderer.domElement);
+
+    // --- POST-PROCESSING BLOOM (HIGH GRAPHICS GLOW) ---
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    const bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      1.35,  // Bloom strength
+      0.45,  // Radius
+      0.2    // Threshold
+    );
+    composer.addPass(bloomPass);
+
+    // --- LIGHTING ---
+    const ambientLight = new THREE.AmbientLight(0x3a2a6d, 1.5);
+    scene.add(ambientLight);
+
+    const dirLight = new THREE.DirectionalLight(0x00f3ff, 2.5);
+    dirLight.position.set(10, 20, 10);
+    scene.add(dirLight);
+
+    const backLight = new THREE.DirectionalLight(0xff007f, 2.0);
+    backLight.position.set(-10, 10, -20);
+    scene.add(backLight);
+
+    // --- RETRO SUN & STARFIELD ---
+    const sunGeo = new THREE.CircleGeometry(28, 64);
+    const sunMat = new THREE.MeshBasicMaterial({
+      color: 0xff2a6d,
+      fog: false
+    });
+    const sun = new THREE.Mesh(sunGeo, sunMat);
+    sun.position.set(0, 14, -140);
+    scene.add(sun);
+
+    // Starfield
+    const starGeo = new THREE.BufferGeometry();
+    const starCount = 1200;
+    const starPos = new Float32Array(starCount * 3);
+    for (let i = 0; i < starCount * 3; i += 3) {
+      starPos[i] = (Math.random() - 0.5) * 260;
+      starPos[i + 1] = Math.random() * 100 + 5;
+      starPos[i + 2] = -Math.random() * 180;
+    }
+    starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+    const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.45 });
+    const stars = new THREE.Points(starGeo, starMat);
+    scene.add(stars);
+
+    // --- MOVING CYBER GRID FLOOR ---
+    const gridHelper1 = new THREE.GridHelper(160, 80, 0xff007f, 0x261447);
+    gridHelper1.position.z = -40;
+    scene.add(gridHelper1);
+
+    const gridHelper2 = new THREE.GridHelper(160, 80, 0xff007f, 0x261447);
+    gridHelper2.position.z = -200;
+    scene.add(gridHelper2);
+
+    // Reflective dark road plane
+    const roadGeo = new THREE.PlaneGeometry(14, 300);
+    const roadMat = new THREE.MeshStandardMaterial({
+      color: 0x090518,
+      roughness: 0.25,
+      metalness: 0.85
+    });
+    const road = new THREE.Mesh(roadGeo, roadMat);
+    road.rotation.x = -Math.PI / 2;
+    road.position.set(0, -0.02, -100);
+    scene.add(road);
+
+    // Glowing Side Rails
+    const railGeo = new THREE.BoxGeometry(0.25, 0.4, 300);
+    const railMat = new THREE.MeshStandardMaterial({
+      color: 0x00f3ff,
+      emissive: 0x00f3ff,
+      emissiveIntensity: 2.5
+    });
+    const leftRail = new THREE.Mesh(railGeo, railMat);
+    leftRail.position.set(-6.5, 0.2, -100);
+    scene.add(leftRail);
+
+    const rightRail = new THREE.Mesh(railGeo, railMat);
+    rightRail.position.set(6.5, 0.2, -100);
+    scene.add(rightRail);
+
+    // --- PLAYER FUTURISTIC HOVER SHIP ---
+    const playerGroup = new THREE.Group();
+
+    // Main Fuselage
+    const bodyGeo = new THREE.ConeGeometry(0.9, 3.4, 6);
+    bodyGeo.rotateX(-Math.PI / 2);
+    const bodyMat = new THREE.MeshStandardMaterial({
+      color: 0x111827,
+      metalness: 0.9,
+      roughness: 0.2
+    });
+    const bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
+    playerGroup.add(bodyMesh);
+
+    // Neon Cockpit Canopy
+    const cockpitGeo = new THREE.BoxGeometry(0.55, 0.35, 1.3);
+    const cockpitMat = new THREE.MeshStandardMaterial({
+      color: 0x00f3ff,
+      emissive: 0x00f3ff,
+      emissiveIntensity: 2.2
+    });
+    const cockpit = new THREE.Mesh(cockpitGeo, cockpitMat);
+    cockpit.position.set(0, 0.32, -0.1);
+    playerGroup.add(cockpit);
+
+    // Wings
+    const wingGeo = new THREE.BoxGeometry(3.2, 0.1, 1.1);
+    const wingMat = new THREE.MeshStandardMaterial({
+      color: 0x1e1b4b,
+      metalness: 0.85,
+      roughness: 0.25
+    });
+    const wings = new THREE.Mesh(wingGeo, wingMat);
+    wings.position.set(0, -0.05, 0.5);
+    playerGroup.add(wings);
+
+    // Wingtip Neon Strips
+    const tipGeo = new THREE.BoxGeometry(0.15, 0.16, 1.15);
+    const tipMat = new THREE.MeshStandardMaterial({
+      color: 0xff007f,
+      emissive: 0xff007f,
+      emissiveIntensity: 3.0
+    });
+    const leftTip = new THREE.Mesh(tipGeo, tipMat);
+    leftTip.position.set(-1.6, -0.05, 0.5);
+    const rightTip = new THREE.Mesh(tipGeo, tipMat);
+    rightTip.position.set(1.6, -0.05, 0.5);
+    playerGroup.add(leftTip, rightTip);
+
+    // Engine Thruster Glow
+    const thrusterGeo = new THREE.SphereGeometry(0.38, 16, 16);
+    const thrusterMat = new THREE.MeshBasicMaterial({ color: 0x00ffaa });
+    const thruster = new THREE.Mesh(thrusterGeo, thrusterMat);
+    thruster.position.set(0, 0, 1.75);
+    playerGroup.add(thruster);
+
+    playerGroup.position.set(0, 1.1, 2);
+    scene.add(playerGroup);
+
+    // --- GAME STATE & OBJECT POOLS ---
+    let isPlaying = false;
+    let score = 0;
+    let highScore = Number(localStorage.getItem('neonHorizonHigh')) || 0;
+    document.getElementById('highscore').textContent = highScore;
+
+    let speed = 38;
+    let targetX = 0;
+    const laneLimit = 4.6;
+    const keys = { left: false, right: false };
+
+    const obstacles = [];
+    const orbs = [];
+    const particles = [];
+
+    // Shared Geometries & Materials
+    const obsGeo = new THREE.BoxGeometry(2.3, 1.8, 1.2);
+    const obsMat = new THREE.MeshStandardMaterial({
+      color: 0xff0055,
+      emissive: 0xff0055,
+      emissiveIntensity: 2.2,
+      roughness: 0.2
+    });
+
+    const orbGeo = new THREE.OctahedronGeometry(0.65, 0);
+    const orbMat = new THREE.MeshStandardMaterial({
+      color: 0xffcc00,
+      emissive: 0xffaa00,
+      emissiveIntensity: 2.6
+    });
+
+    function spawnEntity() {
+      const lanes = [-4.2, -1.4, 1.4, 4.2];
+      const randomLane = lanes[Math.floor(Math.random() * lanes.length)];
+
+      if (Math.random() < 0.72) {
+        // Spawn Obstacle Barrier
+        const mesh = new THREE.Mesh(obsGeo, obsMat);
+        mesh.position.set(randomLane, 0.9, -150);
+        scene.add(mesh);
+        obstacles.push(mesh);
+      } else {
+        // Spawn Bonus Energy Orb
+        const orb = new THREE.Mesh(orbGeo, orbMat);
+        orb.position.set(randomLane, 1.2, -150);
+        scene.add(orb);
+        orbs.push(orb);
+      }
+    }
+
+    function createExplosion(pos, colorHex, count = 24) {
+      const pGeo = new THREE.BoxGeometry(0.22, 0.22, 0.22);
+      const pMat = new THREE.MeshBasicMaterial({ color: colorHex });
+      for (let i = 0; i < count; i++) {
+        const p = new THREE.Mesh(pGeo, pMat);
+        p.position.copy(pos);
+        p.userData.vel = new THREE.Vector3(
+          (Math.random() - 0.5) * 16,
+          Math.random() * 12 + 2,
+          (Math.random() - 0.5) * 16
+        );
+        p.userData.life = 1.0;
+        scene.add(p);
+        particles.push(p);
+      }
+    }
+
+    // --- CONTROLS ---
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = true;
+      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = true;
+    });
+    window.addEventListener('keyup', (e) => {
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = false;
+      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = false;
+    });
+
+    // Touch controls for Mobile
+    window.addEventListener('touchstart', (e) => {
+      if (!isPlaying) return;
+      const touchX = e.touches[0].clientX;
+      if (touchX < window.innerWidth / 2) {
+        keys.left = true;
+        keys.right = false;
+      } else {
+        keys.right = true;
+        keys.left = false;
+      }
+    });
+    window.addEventListener('touchend', () => {
+      keys.left = false;
+      keys.right = false;
+    });
+
+    // --- START / RESET GAME ---
+    const overlay = document.getElementById('overlay');
+    const startBtn = document.getElementById('start-btn');
+    const finalScoreEl = document.getElementById('final-score');
+
+    function startGame() {
+      // Clear existing objects
+      obstacles.forEach((o) => scene.remove(o));
+      orbs.forEach((o) => scene.remove(o));
+      obstacles.length = 0;
+      orbs.length = 0;
+
+      score = 0;
+      speed = 40;
+      targetX = 0;
+      playerGroup.position.set(0, 1.1, 2);
+      playerGroup.visible = true;
+      document.getElementById('score').textContent = '0';
+
+      overlay.classList.add('hidden');
+      isPlaying = true;
+    }
+
+    function gameOver() {
+      isPlaying = false;
+      playerGroup.visible = false;
+      createExplosion(playerGroup.position, 0x00f3ff, 40);
+
+      const roundedScore = Math.floor(score);
+      if (roundedScore > highScore) {
+        highScore = roundedScore;
+        localStorage.setItem('neonHorizonHigh', highScore);
+        document.getElementById('highscore').textContent = highScore;
+      }
+
+      document.getElementById('title').textContent = 'SYSTEM CRASHED';
+      document.getElementById('desc').textContent = 'Laser barrier se takkar ho gayi! Phir se try karein aur naya record banayein.';
+      finalScoreEl.style.display = 'block';
+      finalScoreEl.textContent = `FINAL SCORE: ${roundedScore}`;
+      startBtn.textContent = 'PLAY AGAIN';
+
+      setTimeout(() => {
+        overlay.classList.remove('hidden');
+      }, 650);
+    }
+
+    startBtn.addEventListener('click', startGame);
+
+    // --- MAIN ANIMATION LOOP ---
+    const clock = new THREE.Clock();
+    let spawnTimer = 0;
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = Math.min(clock.getDelta(), 0.05);
+      const elapsed = clock.getElapsedTime();
+
+      // Move Grid Floor continuously
+      const gridMove = speed * dt;
+      gridHelper1.position.z += gridMove;
+      gridHelper2.position.z += gridMove;
+      if (gridHelper1.position.z > 80) gridHelper1.position.z = gridHelper2.position.z - 160;
+      if (gridHelper2.position.z > 80) gridHelper2.position.z = gridHelper1.position.z - 160;
+
+      // Thruster pulse
+      const pulse = 1 + Math.sin(elapsed * 25) * 0.2;
+      thruster.scale.set(pulse, pulse, pulse);
+
+      if (isPlaying) {
+        // Increase difficulty gradually
+        speed += dt * 0.65;
+        score += dt * 15;
+        document.getElementById('score').textContent = Math.floor(score);
+
+        // Player lateral movement
+        const moveSpeed = 14;
+        if (keys.left) targetX -= moveSpeed * dt;
+        if (keys.right) targetX += moveSpeed * dt;
+        targetX = Math.max(-laneLimit, Math.min(laneLimit, targetX));
+
+        playerGroup.position.x += (targetX - playerGroup.position.x) * 12 * dt;
+        playerGroup.position.y = 1.1 + Math.sin(elapsed * 5) * 0.12;
+
+        // Smooth banking tilt
+        const tilt = (playerGroup.position.x - targetX) * 0.35;
+        playerGroup.rotation.z = tilt;
+
+        // Spawn obstacles & orbs
+        spawnTimer += dt;
+        const spawnInterval = Math.max(0.32, 0.85 - (speed - 40) * 0.008);
+        if (spawnTimer >= spawnInterval) {
+          spawnTimer = 0;
+          spawnEntity();
+        }
+
+        // Update Obstacles
+        for (let i = obstacles.length - 1; i >= 0; i--) {
+          const obs = obstacles[i];
+          obs.position.z += speed * dt;
+
+          // Collision Check
+          const dx = Math.abs(obs.position.x - playerGroup.position.x);
+          const dz = Math.abs(obs.position.z - playerGroup.position.z);
+          if (dx < 1.45 && dz < 1.45) {
+            gameOver();
+            break;
+          }
+
+          if (obs.position.z > 15) {
+            scene.remove(obs);
+            obstacles.splice(i, 1);
+          }
+        }
+
+        // Update Bonus Orbs
+        for (let i = orbs.length - 1; i >= 0; i--) {
+          const orb = orbs[i];
+          orb.position.z += speed * dt;
+          orb.rotation.y += 3 * dt;
+          orb.rotation.x += 2 * dt;
+
+          const dx = Math.abs(orb.position.x - playerGroup.position.x);
+          const dz = Math.abs(orb.position.z - playerGroup.position.z);
+          if (dx < 1.4 && dz < 1.5) {
+            score += 50;
+            createExplosion(orb.position, 0xffcc00, 15);
+            scene.remove(orb);
+            orbs.splice(i, 1);
+            continue;
+          }
+
+          if (orb.position.z > 15) {
+            scene.remove(orb);
+            orbs.splice(i, 1);
+          }
+        }
+      }
+
+      // Update Explosion Particles
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.position.addScaledVector(p.userData.vel, dt);
+        p.userData.vel.y -= 25 * dt;
+        p.userData.life -= dt * 1.8;
+        p.scale.setScalar(Math.max(0, p.userData.life));
+        if (p.userData.life <= 0) {
+          scene.remove(p);
+          particles.splice(i, 1);
+        }
+      }
+
+      composer.render();
+    }
+
+    // --- RESPONSIVE RESIZE ---
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      composer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+  </script>
+</body>
+</html>

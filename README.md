@@ -1,2 +1,0 @@
-# Xuman-game
-New game
